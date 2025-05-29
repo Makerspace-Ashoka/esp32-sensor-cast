@@ -36,4 +36,6 @@ The following components were used for our implementation:
 
 7. If you have more than one esp to record data from more than one sensor then populate `espNodes` with the label you want to give to your esp and their mDNS address.
 
-8. Once you run this script, your pi should be logging data from the sensors into a csv file in the following format: `time(YYYY-MM-DD HH:MM:SS) nodeName temperature humidity`
+8. Once you run this script, your pi should be logging data from the sensors into a csv file in the following format: `time(YYYY-MM-DD HH:MM:SS) nodeName temperature humidity`. The logging is done every 15 seconds, this can be modified by changing the argument x in `time.sleep(x)` present on line 21 in `log_sensor.py`.
+
+This finishes a basic implementaion of our logging system where once you power on your ESP32 circuit and run the script on your Raspberry Pi, it starts logging the data from DHT22 sensor into your code.
