@@ -39,3 +39,71 @@ The following components were used for our implementation:
 8. Once you run this script, your pi should be logging data from the sensors into a csv file in the following format: `time(YYYY-MM-DD HH:MM:SS) nodeName temperature humidity`. The logging is done every 15 seconds, this can be modified by changing the argument x in `time.sleep(x)` present on line 21 in `log_sensor.py`.
 
 This finishes a basic implementaion of our logging system where once you power on your ESP32 circuit and run the script on your Raspberry Pi, it starts logging the data from DHT22 sensor into your code.
+
+### Automating the logging script on the Raspberry Pi
+
+Currently the logging starts only if you run the `log_sensor.py` script manually after powering on the pi but we want a more robust system which will automatically start logging as soon as it is powered on. This makes our implementation less susceptible to losing data after power cuts.
+
+We can make this script run automatically by turning it into a system service unit(basically a program that always keeps running on the machine in the background) as follows:
+
+1. Open terminal on your raspberry pi and type the following command:
+
+    `chmod +x path_to_your_log_sensor_file`
+
+    This adds the execute permission to the `log_sensor.py` file, the file can now directly be run from the terminal if the interpreter is present.
+
+
+2. Create a systemmd service file using the following command in the terminal:
+
+    `sudo nano /etc/systemd/system/log_sensor.service
+`
+
+    This opens a text editor window in the terminal. Paste the following contents using `Ctrl+Shift+V`:
+
+    ```
+    [Unit]
+    Description=ESP32 Sensor Logger
+    After=network-online.target
+    Wants=network-online.target
+
+    [Service]
+    ExecStart=/usr/bin/python3 path_to_your_log_sensor_file
+    WorkingDirectory=/home/yourUserName/
+    StandardOutput=journal
+    StandardError=journal
+    Restart=on-failure
+    User=yourUserName
+    Environment=PYTHONUNBUFFERED=1
+
+    [Install]
+    WantedBy=multi-user.target
+    ```
+
+    Ensure that you enter the correct path to your log_sensor.py file and replace yourUserName with your user name on the raspberry pi in the above contents.
+
+
+3. Enable the service file using the following commands in your pi terminal:
+
+    ```sudo systemctl daemon-reexec       # ensures all changes are read
+    sudo systemctl daemon-reload
+    sudo systemctl enable sensor-logger.service
+    sudo systemctl start sensor-logger.service
+    ```
+
+4. The file should now be automatically running in the background as soon as your pi starts. It does not require you to manually run the script to log the data anymore.
+
+5. You can check the status of the service and view its logs using the following two commands in the terminal:
+
+    ```
+    sudo systemctl status sensor-logger.service # Check Status
+    journalctl -u sensor-logger.service -f # View Logs
+    ```
+
+6. To confirm that it is working, you can reboot your pi and run:
+
+    ```
+    cat path_to_your_log_csv_file
+    ```
+
+    You should now be seeing new entries being added every 15 seconds.
+    
