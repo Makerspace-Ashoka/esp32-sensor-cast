@@ -106,4 +106,12 @@ We can make this script run automatically by turning it into a system service un
     ```
 
     You should now be seeing new entries being added every 15 seconds.
-    
+
+### Grafana Server
+
+Serving data to grafana using: 
+
+```
+cd /path/to/your/csv
+python3 -m http.server 8080
+```
