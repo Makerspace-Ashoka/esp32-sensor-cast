@@ -1,73 +1,94 @@
 #include "LittleFS.h"
 #include "FS.h"
 #include "DHT.h"
+#include <ArduinoJson.h>  // Install via Library Manager
 
 #define DHTTYPE DHT22
-
-int dhtPin=5;
-
-int wait=15000;
+int dhtPin = 5;
+int wait = 15000;
 
 DHT dht(dhtPin, DHTTYPE);
 
-void appendFile(fs::FS &fs, const char * path, const char * message){
-    Serial.printf("Appending to file: %s\r\n", path);
+const char* filename = "/log.json";
 
-    File file = fs.open(path, FILE_APPEND);
-    if(!file){
-        Serial.println("- failed to open file for appending");
+// Function to load existing JSON data
+DynamicJsonDocument loadLog(fs::FS &fs, const char* path) {
+    DynamicJsonDocument doc(2048);
+    
+    if (!fs.exists(path)) {
+        Serial.println("Log file doesn't exist. Creating new log.");
+        return doc;  // Return empty doc
+    }
+
+    File file = fs.open(path, "r");
+    if (!file) {
+        Serial.println("Failed to open log file for reading.");
+        return doc;
+    }
+
+    DeserializationError error = deserializeJson(doc, file);
+    if (error) {
+        Serial.print("Failed to parse JSON: ");
+        Serial.println(error.c_str());
+    }
+    file.close();
+    return doc;
+}
+
+// Function to save JSON data
+void saveLog(fs::FS &fs, const char* path, DynamicJsonDocument& doc) {
+    File file = fs.open(path, "w");
+    if (!file) {
+        Serial.println("Failed to open file for writing.");
         return;
     }
-    if(file.print(message)){
-        Serial.println("- message appended");
+    if (serializeJsonPretty(doc, file)) {
+        Serial.println("Log updated successfully.");
     } else {
-        Serial.println("- append failed");
+        Serial.println("Failed to write to file.");
     }
     file.close();
 }
 
 void setup(){
-  Serial.begin(115200);
+    Serial.begin(115200);
 
-  if(!LittleFS.begin()){
-    Serial.println("Error occured while mounting LittleFS");
-    return;
-  }
-  File file = LittleFS.open("/test.txt", "r");
-  if(!file){
-    Serial.println("Failed to open file for reading");
-    return;
-  }
-  
-  Serial.println("File Content:");
-  while(file.available()){
-    // appendFile(LittleFS, "/test.txt", "\n\nYo, here's how you add stuff here\n\nWell Done MF\r\n"); //Append some text to the previous file
-    
-    Serial.write(file.read());
-  }
-  file.close();
+    if (!LittleFS.begin()) {
+        Serial.println("LittleFS mount failed.");
+        return;
+    }
 
-  Serial.println("DHT Readings:");
-  dht.begin();
+    dht.begin();
 }
- 
+
 void loop() {
+    delay(wait);
 
-delay(wait);
+    float h = dht.readHumidity();
+    float t = dht.readTemperature();
 
-  float h=dht.readHumidity();
-float t=dht.readTemperature();
+    if (isnan(h) || isnan(t)) {
+        Serial.println("Failed to read from DHT sensor.");
+        return;
+    }
 
-if(isnan(h)|isnan(t)){
-  Serial.println("Failed to read the sensor! Check the circuit for possible causes.");
-return;
-}
+    Serial.printf("Temp: %.2f°C, Humidity: %.2f%%\n", t, h);
 
-Serial.print("Temperature: ");
-Serial.println(t);
+    // Load existing log
+    DynamicJsonDocument doc = loadLog(LittleFS, filename);
 
-Serial.print("Humidity: ");
+    // Determine next index
+    int nextIndex = 0;
+    for (JsonPair kv : doc.as<JsonObject>()) {
+        int index = String(kv.key().c_str()).toInt();
+        if (index >= nextIndex) nextIndex = index + 1;
+    }
 
-Serial.println(h);
+    // Add new reading
+    JsonObject newEntry = doc.createNestedObject(String(nextIndex));
+    newEntry["temperature"] = t;
+    newEntry["humidity"] = h;
 
+    // Save updated log
+    saveLog(LittleFS, filename, doc);
 }
