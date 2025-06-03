@@ -1,0 +1,13 @@
+# Ignore everything in esp32Logging
+# esp32Logger/**
+
+# Except the main.cpp in src directory
+!esp32Logger/src/
+!esp32Logger/src/main.cpp
+
+esp32Logger/.pio
+esp32Logger/.vscode/.browse.c_cpp.db*
+esp32Logger/.vscode/c_cpp_properties.json
+esp32Logger/.vscode/launch.json
+esp32Logger/.vscode/ipch
+esp32Logger/.vscode

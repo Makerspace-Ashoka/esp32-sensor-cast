@@ -115,3 +115,17 @@ Serving data to grafana using:
 cd /path/to/your/csv
 python3 -m http.server 8080
 ```
+
+### Version 2
+
+Now that we have a basic implementation of the system running. We will look at storing the data on the esp32 itself as well in addition to sending it to the raspberry pi, this is useful in cases where the network might be facing some errors.
+
+The approach is now as follows:
+
+- The ESP32 will read the sensor repeatedly after a fixed time interval.
+
+- If it is connected to a Grafana Server running on the Pi then we will use websocket to immediately share the data with the Grafana Server.
+
+- The data will also be stored on the local memory of the ESP32 using LittleFS.
+
+- When the memory of the esp32 gets about 80% full with the data, we will write all the data to a SD card connected to the esp32 and clear the memory of the esp32. This allows us to permanently store to the SD card, we do not write to SD card directly every time we read to reduce the total number of write operations and chances of memory corruption.
