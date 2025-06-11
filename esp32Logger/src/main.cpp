@@ -6,9 +6,12 @@
 #include <WiFi.h>
 #include <HTTPClient.h>
 
+#define FORMAT_LITTLEFS_IF_FAILED true
 #define DHTTYPE DHT22
-int dhtPin =33;
-int wait = 15000;
+int dhtPin = 33;
+int wait = 60000;
+
+#define NODE_NAME "esp32-node-1"
 
 const char* ssid     = "RedBrick Waddles";
 const char* password = "Daisy-Donaldo-Quacks?";
@@ -16,30 +19,93 @@ const char* ntpServer = "pool.ntp.org";
 const long gmtOffset_sec = 19800; // IST = UTC+5:30
 const int daylightOffset_sec = 0;
 
-DHT dht(dhtPin, DHTTYPE);
 const char* filename = "/log.json";
+const char* serverURL = "http://10.42.207.234:5000/upload"; // Change if needed
 
-DynamicJsonDocument loadLog(fs::FS &fs, const char* path) {
-    DynamicJsonDocument doc(2048);
-    if (!fs.exists(path)) return doc;
+DHT dht(dhtPin, DHTTYPE);
 
-    File file = fs.open(path, "r");
-    if (!file) return doc;
+void sendReadingToServer(float temperature, float humidity, const char* timestamp) {
+    HTTPClient http;
+    http.begin(serverURL);
+    http.addHeader("Content-Type", "application/json");
 
-    DeserializationError error = deserializeJson(doc, file);
-    file.close();
-    return doc;
+    JsonDocument doc;
+    JsonObject obj = doc.to<JsonObject>();
+    obj["node_name"] = NODE_NAME;
+    obj["timestamp"] = timestamp;
+    obj["temperature"] = temperature;
+    obj["humidity"] = humidity;
+
+    String requestBody;
+    serializeJson(obj, requestBody);
+
+    int httpResponseCode = http.POST(requestBody);
+    if (httpResponseCode > 0) {
+        Serial.printf("POST sent. Response code: %d\n", httpResponseCode);
+        String response = http.getString();
+        Serial.println("Server response:");
+        Serial.println(response);
+    } else {
+        Serial.printf("POST failed. Error: %s\n", http.errorToString(httpResponseCode).c_str());
+    }
+
+    http.end();
 }
 
-void saveLog(fs::FS &fs, const char* path, DynamicJsonDocument& doc) {
-    File file = fs.open(path, "w");
-    if (!file) return;
+void appendReadingToFile(float temperature, float humidity, const char* timestamp) {
+    JsonDocument doc;
+    doc.to<JsonObject>();
+
+    if (LittleFS.exists(filename)) {
+        File file = LittleFS.open(filename, "r");
+        if (file) {
+            DeserializationError error = deserializeJson(doc, file);
+            if (error) {
+                Serial.println("Failed to parse existing log.json. Starting fresh.");
+                doc.clear();
+                doc.to<JsonObject>();
+            }
+            file.close();
+        }
+    }
+
+    int nextIndex = 0;
+    for (JsonPair kv : doc.as<JsonObject>()) {
+        int index = String(kv.key().c_str()).toInt();
+        if (index >= nextIndex) nextIndex = index + 1;
+    }
+
+    JsonObject entry = doc[String(nextIndex)].to<JsonObject>();
+    entry["node_name"] = NODE_NAME;
+    entry["timestamp"] = timestamp;
+    entry["temperature"] = temperature;
+    entry["humidity"] = humidity;
+
+    File file = LittleFS.open(filename, "w");
+    if (!file) {
+        Serial.println("Failed to open log.json for writing.");
+        return;
+    }
+
     serializeJsonPretty(doc, file);
     file.close();
+
+    String jsonOut;
+    serializeJson(entry, jsonOut);
+    Serial.print("Saved reading: ");
+    Serial.println(jsonOut);
+
+    // Post to server
+    sendReadingToServer(temperature, humidity, timestamp);
 }
 
-void setup(){
+void setup() {
     Serial.begin(115200);
+
+    if (!LittleFS.begin(FORMAT_LITTLEFS_IF_FAILED)) {
+        Serial.println("LittleFS mount failed");
+        return;
+    }
 
     WiFi.begin(ssid, password);
     while (WiFi.status() != WL_CONNECTED) {
@@ -49,13 +115,8 @@ void setup(){
     Serial.println("\nWiFi connected.");
 
     configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
-
-    if (!LittleFS.begin()) {
-        Serial.println("LittleFS mount failed.");
-        return;
-    }
-
     dht.begin();
+    delay(wait);
 }
 
 void loop() {
@@ -77,46 +138,7 @@ void loop() {
 
     char timestamp[32];
     strftime(timestamp, sizeof(timestamp), "%Y-%m-%d %H:%M:%S", &timeinfo);
-
     Serial.printf("Temp: %.2f°C, Humidity: %.2f%% @ %s\n", t, h, timestamp);
 
-    // Load existing log
-    DynamicJsonDocument doc = loadLog(LittleFS, filename);
-
-    // Determine next index
-    int nextIndex = 0;
-    for (JsonPair kv : doc.as<JsonObject>()) {
-        int index = String(kv.key().c_str()).toInt();
-        if (index >= nextIndex) nextIndex = index + 1;
-    }
-
-    // Add new reading to local log
-    JsonObject newEntry = doc.createNestedObject(String(nextIndex));
-    newEntry["temperature"] = t;
-    newEntry["humidity"] = h;
-    newEntry["timestamp"] = timestamp;
-
-    // Save to LittleFS
-    saveLog(LittleFS, filename, doc);
-
-    // Send to server
-    StaticJsonDocument<256> payload;
-    payload["temperature"] = t;
-    payload["humidity"] = h;
-    payload["timestamp"] = timestamp;
-
-    String jsonPayload;
-    serializeJson(payload, jsonPayload);
-
-    HTTPClient http;
-    http.begin("http://10.42.206.85:5000/upload");
-    http.addHeader("Content-Type", "application/json");
-
-    int httpResponseCode = http.POST(jsonPayload);
-    if (httpResponseCode > 0) {
-        Serial.printf("Posted to server: %d\n", httpResponseCode);
-    } else {
-        Serial.printf("POST failed: %s\n", http.errorToString(httpResponseCode).c_str());
-    }
-    http.end();
+    appendReadingToFile(t, h, timestamp);
 }
