@@ -9,18 +9,18 @@
 #define FORMAT_LITTLEFS_IF_FAILED true
 #define DHTTYPE DHT22
 int dhtPin = 33;
-int wait = 60000;
+int wait = 10000;
 
 #define NODE_NAME "esp32-node-1"
 
-const char* ssid     = "RedBrick Waddles";
-const char* password = "Daisy-Donaldo-Quacks?";
+const char* ssid     = "piNetwork";
+const char* password = "piPassword";
 const char* ntpServer = "pool.ntp.org";
-const long gmtOffset_sec = 19800; // IST = UTC+5:30
+const long gmtOffset_sec = 0;
 const int daylightOffset_sec = 0;
 
 const char* filename = "/log.json";
-const char* serverURL = "http://10.42.207.234:5000/upload"; // Change if needed
+const char* serverURL = "http://10.42.0.1:5000/upload"; // Change if needed
 
 DHT dht(dhtPin, DHTTYPE);
 
